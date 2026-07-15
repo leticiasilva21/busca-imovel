@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Busca de Imóvel — Rota e Líder</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --card: #ffffff;
+    --border: #e5e5e8;
+    --text: #1a1a1e;
+    --muted: #6b6b74;
+    --accent: #ea580c;
+    --accent-dark: #c2410c;
+    --warn-bg: #fef3c7;
+    --warn-text: #92400e;
+    --live-bg: #dcfce7;
+    --live-text: #15803d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 24px;
+  }
+  .search-box {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  input[type="text"], input[type="email"], input[type="password"] {
+    flex: 1;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    background: var(--card);
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  input:focus { border-color: var(--accent); }
+  button {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { background: #d1d1d6; cursor: default; }
+  button.secondary {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: #f0f0f1; }
+
+  .status {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    min-height: 18px;
+  }
+  .status.error { color: #dc2626; }
+  .status.warn { color: var(--warn-text); }
+  .status.ok { color: var(--live-text); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .card-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    font-family: ui-monospace, monospace;
+  }
+  .fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+  }
+  .field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .field-value {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .badges {
+    margin-top: 10px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #fff7ed;
+    color: var(--accent-dark);
+  }
+  .badge.inactive { background: #f4f4f5; color: #71717a; }
+  .badge.live { background: var(--live-bg); color: var(--live-text); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn-text); }
+
+  footer {
+    text-align: center;
+    color: #b0b0b8;
+    font-size: 11px;
+    margin-top: 32px;
+  }
+  footer a { color: #b0b0b8; }
+
+  .gate {
+    max-width: 380px;
+    margin: 60px auto;
+    text-align: center;
+  }
+  .gate .card { text-align: left; }
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .hidden { display: none !important; }
+
+  .admin-toggle {
+    text-align: center;
+    margin-top: 20px;
+  }
+  .admin-toggle button {
+    background: none;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 4px 8px;
+    text-decoration: underline;
+  }
+  .admin-panel {
+    margin-top: 20px;
+    border-top: 2px dashed var(--border);
+    padding-top: 20px;
+  }
+  .req-row, .allowed-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .req-row:last-child, .allowed-row:last-child { border-bottom: none; }
+  .req-actions { display: flex; gap: 6px; }
+  .req-actions button { padding: 6px 10px; font-size: 12px; }
+  .btn-deny { background: #ef4444; }
+  .btn-deny:hover { background: #dc2626; }
+  .btn-revoke { background: transparent; color: #dc2626; border: 1px solid #fecaca; }
+</style>
+</head>
+<body>
+
+  <!-- GATE: tela de login por email -->
+  <div class="wrap gate" id="gate">
+    <h1>Busca de Imóvel</h1>
+    <p class="subtitle">Digite seu email @carpediemhomes.com.br para entrar.</p>
+    <div class="card">
+      <input type="email" id="gate-email" placeholder="seuemail@carpediemhomes.com.br" autofocus />
+      <div class="checkbox-row">
+        <input type="checkbox" id="gate-remember" checked />
+        <label for="gate-remember">Manter conectado neste dispositivo</label>
+      </div>
+      <button id="gate-btn" style="width:100%">Entrar</button>
+    </div>
+    <div class="status" id="gate-status"></div>
+  </div>
+
+  <!-- APP: ferramenta de busca (só aparece após login) -->
+  <div class="wrap hidden" id="app">
+    <h1>Busca de Imóvel</h1>
+    <p class="subtitle">Consulte por código Stays, nome interno ou título — cruza dados ao vivo do Supabase com a planilha do Mastertable.</p>
+
+    <div class="search-box">
+      <input type="text" id="q" placeholder="Ex: MR12I, PB-CAB-IT.Azimut101... ou Mana Beach" />
+      <button id="btn">Buscar</button>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div id="results"></div>
+
+    <div class="admin-toggle">
+      <button id="admin-link">Área do admin</button>
+      <button id="logout-link" class="secondary" style="margin-left:8px">Sair</button>
+    </div>
+
+    <div class="admin-panel hidden" id="admin-panel">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:10px">Chave de admin</div>
+        <input type="password" id="admin-key" placeholder="Chave de admin" />
+        <div class="checkbox-row">
+          <input type="checkbox" id="admin-remember" checked />
+          <label for="admin-remember">Lembrar neste dispositivo</label>
+        </div>
+        <button id="admin-unlock-btn" style="width:100%">Desbloquear</button>
+      </div>
+
+      <div class="hidden" id="admin-content">
+        <h2 style="font-size:15px; margin:20px 0 8px">Pedidos pendentes</h2>
+        <div class="card" id="pending-list"><div class="status">Carregando...</div></div>
+
+        <h2 style="font-size:15px; margin:20px 0 8px">Acessos liberados</h2>
+        <div class="card" id="allowed-list"><div class="status">Carregando...</div></div>
+
+        <h2 style="font-size:15px; margin:20px 0 8px">Atualizar planilha do Mastertable</h2>
+        <div class="card">
+          <p class="card-sub" style="margin-bottom:10px">
+            Envie o .xlsx exportado do Mastertable (colunas: Nome interno, Stays ID, Título, Unidade de Negócio,
+            Unidades de negócio nomeadas, Líderes, Status). Isso <strong>substitui totalmente</strong> o snapshot
+            usado como fallback quando o imóvel ainda não está no Supabase ao vivo.
+          </p>
+          <input type="file" id="planilha-file" accept=".xlsx,.xls" />
+          <button id="planilha-upload-btn" style="width:100%; margin-top:10px">Enviar planilha</button>
+          <div class="status" id="planilha-status"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Fontes: public.imoveis (Supabase, ao vivo) + busca_imovel_planilha (snapshot do Mastertable)</footer>
+
+<!-- SheetJS: só usado para parsear o .xlsx no upload da planilha (área do admin) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+
+<script>
+  const SUPABASE_URL = 'https://ucavfotyciwnqwurzjny.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjYXZmb3R5Y2l3bnF3dXJ6am55Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc5NzUzNjYsImV4cCI6MjA3MzU1MTM2Nn0.nE_W8wZZvJfzlvhP83ge1J0ooS3EcFVSlQYK28eTGU0';
+
+  const LS_EMAIL_KEY = 'busca_imovel_email';
+  const LS_ADMIN_KEY = 'busca_imovel_admin_key';
+
+  // Wrapper seguro: em contexto sandboxed (ex.: iframe sem allow-same-origin, preview em
+  // data: URL) o acesso a localStorage lança exceção síncrona. Sem isso, a página trava
+  // inteira em vez de só cair no modo "não lembrar neste dispositivo".
+  const memoryFallback = {};
+  const safeStorage = {
+    get(key) {
+      try { return localStorage.getItem(key); } catch { return memoryFallback[key] ?? null; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(key, value); } catch { memoryFallback[key] = value; }
+    },
+    remove(key) {
+      try { localStorage.removeItem(key); } catch { delete memoryFallback[key]; }
+    },
+  };
+
+  // `unidade_negocio` (ex.: "BA - Armação") é o código interno do cluster/bairro, não a rota
+  // operacional. Fallback para quando o imóvel só existe no Supabase (public.imoveis) e ainda
+  // não está na tabela busca_imovel_planilha (que já traz a rota nomeada certa).
+  const ROTA_MAP = {
+    "BA - Armação": "Rota Mar da Bahia", "BA - Barra": "Rota do Farol",
+    "BRASIL - Proprietário": "Proprietário", "CE - CUM - KiteStar": "Rota do Ventos",
+    "CE - CUM - MiamiHouse": "Rota do Ventos", "CE - CUM - Proprietário": "Proprietário",
+    "CE - CUM - Pulverizado": "Rota do Ventos", "CE - FOR - BeachClassMeireles": "Rota Orla Viva",
+    "CE - FOR - Mirante": "Rota Orla Viva", "CE - FOR - Pulverizado": "Rota Orla Viva",
+    "CE - PDD - BTH": "Rota Sol e Dunas", "CE - PDD - Pulverizados": "Rota Sol e Dunas",
+    "CE - Proprietário": "Proprietário", "IPO - MaidService": "Terceirizada",
+    "IPO - Proprietário": "Proprietário", "IPO - Terceirizado": "Terceirizada",
+    "JP - AltaGarden": "Rota dos Jardins", "JP - Azimut": "Rota do Coqueiral",
+    "JP - BeachHaus": "Rota dos Jardins", "JP - Breeze": "Rota das Brisas",
+    "JP - GardenHaus": "Rota dos Jardins", "JP - Proprietário": "Proprietário",
+    "JP - Pulverizado Norte": "Rota do Coqueiral", "JP - Pulverizado Sul": "Rota Sol Nascente",
+    "JP - Terceirizada": "Terceirizada", "JP - WayBossa": "Rota do Coqueiral",
+    "JP - WayTambaú": "Rota das Brisas", "PA - Proprietário": "Proprietário",
+    "PE - IPO - Muro Alto": "Rota do Paredão", "PE - IPO - Porto e Cupe": "Rota dos Corais",
+    "PE - REC - Allure": "Rota Orla do Recife", "PE - REC - AndreaPriori": "Rota Orla do Recife",
+    "PE - REC - Botanik": "Rota do River", "PE - REC - PIG": "Rota Recife Azul",
+    "PE - REC - PINA": "Rota do Mangue", "PE - REC - Pulverizado Norte": "Rota do Capiba",
+    "PE - REC - Riverside": "Rota do River", "PE - REC - Rooftop": "Rota Orla do Recife",
+    "PE - REC - ToliveOne": "Rota do Capiba", "PE - REC - Vivant": "Rota do Mangue",
+    "REC - Proprietário": "Proprietário", "RJ - RJ - Send": "Rota Guanabara",
+    "RN - CityStudio": "Rota da Cidade do Sol", "RN - Living Tirol": "Rota da Cidade do Sol",
+    "RN - Pipa - Edvânia": "Terceirizada", "RN - Pipa - Proprietário": "Proprietário",
+    "RN - Proprietário": "Proprietário",
+  };
+
+  async function rpc(name, body) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((data && data.message) || `Erro ${res.status}`);
+    return data;
+  }
+
+  function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ============ GATE (login por email) ============
+  const gateEl = document.getElementById('gate');
+  const appEl = document.getElementById('app');
+  const gateEmailInput = document.getElementById('gate-email');
+  const gateRemember = document.getElementById('gate-remember');
+  const gateBtn = document.getElementById('gate-btn');
+  const gateStatus = document.getElementById('gate-status');
+
+  function showApp() {
+    gateEl.classList.add('hidden');
+    appEl.classList.remove('hidden');
+  }
+  function showGate(message, cls) {
+    appEl.classList.add('hidden');
+    gateEl.classList.remove('hidden');
+    if (message) {
+      gateStatus.textContent = message;
+      gateStatus.className = 'status ' + (cls || '');
+    }
+  }
+
+  async function tryLogin(email, remember) {
+    gateBtn.disabled = true;
+    gateStatus.textContent = 'Verificando...';
+    gateStatus.className = 'status';
+    try {
+      const allowed = await rpc('busca_imovel_check_access', { p_email: email });
+      if (allowed) {
+        if (remember) safeStorage.set(LS_EMAIL_KEY, email);
+        else safeStorage.remove(LS_EMAIL_KEY);
+        showApp();
+        return;
+      }
+      const result = await rpc('busca_imovel_request_access', { p_email: email });
+      if (result === 'requested') {
+        gateStatus.textContent = 'Acesso solicitado! Aguarde a aprovação do admin e tente entrar de novo depois.';
+        gateStatus.className = 'status warn';
+      } else if (result === 'already_pending') {
+        gateStatus.textContent = 'Você já tem um pedido de acesso pendente. Aguarde a aprovação.';
+        gateStatus.className = 'status warn';
+      } else if (result === 'invalid_email') {
+        gateStatus.textContent = 'Digite um email válido.';
+        gateStatus.className = 'status error';
+      } else {
+        gateStatus.textContent = 'Email não liberado ainda.';
+        gateStatus.className = 'status warn';
+      }
+    } catch (err) {
+      gateStatus.textContent = `Erro: ${err.message}`;
+      gateStatus.className = 'status error';
+    } finally {
+      gateBtn.disabled = false;
+    }
+  }
+
+  gateBtn.addEventListener('click', () => {
+    const email = gateEmailInput.value.trim().toLowerCase();
+    if (!email) { gateStatus.textContent = 'Digite seu email.'; gateStatus.className = 'status error'; return; }
+    tryLogin(email, gateRemember.checked);
+  });
+  gateEmailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateBtn.click(); });
+
+  document.getElementById('logout-link').addEventListener('click', () => {
+    safeStorage.remove(LS_EMAIL_KEY);
+    safeStorage.remove(LS_ADMIN_KEY);
+    gateEmailInput.value = '';
+    showGate('');
+  });
+
+  // Checa sessão salva ao carregar
+  (async function initSession() {
+    const savedEmail = safeStorage.get(LS_EMAIL_KEY);
+    if (!savedEmail) { showGate(''); return; }
+    try {
+      const allowed = await rpc('busca_imovel_check_access', { p_email: savedEmail });
+      if (allowed) showApp();
+      else { safeStorage.remove(LS_EMAIL_KEY); showGate('Seu acesso foi removido. Entre novamente.', 'warn'); }
+    } catch (err) {
+      showGate(`Erro ao verificar acesso: ${err.message}`, 'error');
+    }
+  })();
+
+  // ============ BUSCA (fetch ao vivo das duas tabelas) ============
+  const qInput = document.getElementById('q');
+  const btn = document.getElementById('btn');
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+
+  function escapeForOr(value) {
+    const escaped = value.replace(/"/g, '\\"');
+    return `*${escaped}*`;
+  }
+
+  function buildOrFilter(term) {
+    const pattern = escapeForOr(term);
+    return `stays_id.ilike."${pattern}",nome_interno.ilike."${pattern}",titulo.ilike."${pattern}"`;
+  }
+
+  async function fetchFromImoveis(term) {
+    const orFilter = buildOrFilter(term);
+    const url = `${SUPABASE_URL}/rest/v1/imoveis`
+      + `?select=nome_interno,stays_id,titulo,unidade_negocio,lider,status`
+      + `&or=(${encodeURIComponent(orFilter)})`
+      + `&order=nome_interno.asc&limit=30`;
+    const res = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+    if (!res.ok) throw new Error(`Erro ${res.status} (Supabase imoveis)`);
+    return dedupeByKey(await res.json());
+  }
+
+  async function fetchFromPlanilha(term) {
+    const orFilter = buildOrFilter(term);
+    const url = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha`
+      + `?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status`
+      + `&status=eq.Ativo`
+      + `&or=(${encodeURIComponent(orFilter)})`
+      + `&order=nome_interno.asc&limit=30`;
+    const res = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+    if (!res.ok) throw new Error(`Erro ${res.status} (planilha)`);
+    return dedupeByKey(await res.json());
+  }
+
+  function dedupeByKey(rows) {
+    const seen = new Set();
+    return rows.filter(r => {
+      const key = `${r.nome_interno}|${r.stays_id}|${r.titulo}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function keyOf(r) { return (r.nome_interno || r.stays_id || '').toLowerCase().trim(); }
+
+  function mergeSources(imoveisRows, planilhaRows) {
+    const map = new Map();
+    imoveisRows.forEach(r => {
+      map.set(keyOf(r), {
+        nome_interno: r.nome_interno, stays_id: r.stays_id, titulo: r.titulo,
+        rota: ROTA_MAP[r.unidade_negocio] || null, unidade_negocio: r.unidade_negocio,
+        lider: r.lider, status: r.status, sources: ['imoveis'],
+      });
+    });
+    planilhaRows.forEach(r => {
+      const key = keyOf(r);
+      const existing = map.get(key);
+      if (existing) {
+        existing.sources.push('planilha');
+        existing.titulo = existing.titulo || r.titulo;
+        existing.rota = existing.rota || r.rota;
+        existing.unidade_negocio = existing.unidade_negocio || r.unidade_negocio;
+        existing.lider = existing.lider || r.lider;
+        existing.status = existing.status || r.status;
+      } else {
+        map.set(key, {
+          nome_interno: r.nome_interno, stays_id: r.stays_id, titulo: r.titulo,
+          rota: r.rota, unidade_negocio: r.unidade_negocio, lider: r.lider,
+          status: r.status, sources: ['planilha'],
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => (a.nome_interno || '').localeCompare(b.nome_interno || ''));
+  }
+
+  async function search() {
+    const term = qInput.value.trim();
+    if (!term) {
+      statusEl.textContent = 'Digite um código, nome interno ou título para buscar.';
+      statusEl.className = 'status';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    btn.disabled = true;
+    statusEl.textContent = 'Buscando...';
+    statusEl.className = 'status';
+    resultsEl.innerHTML = '';
+
+    const [imoveisResult, planilhaResult] = await Promise.allSettled([
+      fetchFromImoveis(term),
+      fetchFromPlanilha(term),
+    ]);
+
+    const imoveisRows = imoveisResult.status === 'fulfilled' ? imoveisResult.value : [];
+    const planilhaRows = planilhaResult.status === 'fulfilled' ? planilhaResult.value : [];
+    const anyError = imoveisResult.status === 'rejected' ? imoveisResult.reason
+      : planilhaResult.status === 'rejected' ? planilhaResult.reason : null;
+
+    const merged = mergeSources(imoveisRows, planilhaRows);
+    render(merged, term, anyError);
+    btn.disabled = false;
+  }
+
+  function render(rows, term, anyError) {
+    if (rows.length === 0) {
+      statusEl.textContent = anyError
+        ? `Nenhum resultado e houve um erro numa das fontes (${anyError.message}).`
+        : `Nenhum imóvel encontrado para "${term}".`;
+      statusEl.className = anyError ? 'status error' : 'status';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    let msg = `${rows.length} resultado(s).`;
+    if (anyError) msg += ` Atenção: uma das fontes falhou (${anyError.message}).`;
+    statusEl.textContent = msg;
+    statusEl.className = anyError ? 'status warn' : 'status';
+
+    resultsEl.innerHTML = rows.map(r => {
+      const isLive = r.sources.includes('imoveis');
+      return `
+      <div class="card">
+        <div class="card-title">${escapeHtml(r.titulo || r.nome_interno)}</div>
+        <div class="card-sub">${escapeHtml(r.nome_interno)}${r.stays_id ? ' · Stays: ' + escapeHtml(r.stays_id) : ''}</div>
+        <div class="fields">
+          <div><div class="field-label">Rota</div><div class="field-value">${escapeHtml(r.rota) || '—'}</div></div>
+          <div><div class="field-label">Líder</div><div class="field-value">${escapeHtml(r.lider) || '—'}</div></div>
+        </div>
+        ${r.unidade_negocio && r.unidade_negocio !== '-' ? `<div class="card-sub" style="margin-top:8px">Unidade de negócio: ${escapeHtml(r.unidade_negocio)}</div>` : ''}
+        <div class="badges">
+          ${isLive ? '<span class="badge live">Ao vivo (Supabase)</span>' : '<span class="badge warn">Só na planilha — checar sincronização</span>'}
+          ${r.status ? `<span class="badge ${r.status !== 'Ativo' ? 'inactive' : ''}">${escapeHtml(r.status)}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  btn.addEventListener('click', search);
+  qInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+
+  // ============ PAINEL DE ADMIN ============
+  const adminLink = document.getElementById('admin-link');
+  const adminPanel = document.getElementById('admin-panel');
+  const adminKeyInput = document.getElementById('admin-key');
+  const adminRemember = document.getElementById('admin-remember');
+  const adminUnlockBtn = document.getElementById('admin-unlock-btn');
+  const adminContent = document.getElementById('admin-content');
+  const pendingListEl = document.getElementById('pending-list');
+  const allowedListEl = document.getElementById('allowed-list');
+
+  let adminOpen = false;
+  adminLink.addEventListener('click', () => {
+    adminOpen = !adminOpen;
+    adminPanel.classList.toggle('hidden', !adminOpen);
+    if (adminOpen) {
+      const saved = safeStorage.get(LS_ADMIN_KEY);
+      if (saved) { adminKeyInput.value = saved; unlockAdmin(saved); }
+    }
+  });
+
+  async function unlockAdmin(key) {
+    try {
+      await loadAdminData(key);
+      adminContent.classList.remove('hidden');
+      if (adminRemember.checked) safeStorage.set(LS_ADMIN_KEY, key);
+    } catch (err) {
+      alert(`Chave inválida ou erro: ${err.message}`);
+      safeStorage.remove(LS_ADMIN_KEY);
+    }
+  }
+
+  adminUnlockBtn.addEventListener('click', () => unlockAdmin(adminKeyInput.value));
+
+  async function loadAdminData(key) {
+    const [pending, allowed] = await Promise.all([
+      rpc('busca_imovel_admin_list_requests', { p_admin_key: key }),
+      rpc('busca_imovel_admin_list_allowed', { p_admin_key: key }),
+    ]);
+    renderPending(pending, key);
+    renderAllowed(allowed, key);
+  }
+
+  function renderPending(rows, key) {
+    if (rows.length === 0) { pendingListEl.innerHTML = '<div class="status">Nenhum pedido pendente.</div>'; return; }
+    pendingListEl.innerHTML = rows.map(r => `
+      <div class="req-row" data-id="${r.id}">
+        <span>${escapeHtml(r.email)}</span>
+        <div class="req-actions">
+          <button class="btn-approve">Aprovar</button>
+          <button class="btn-deny">Recusar</button>
+        </div>
+      </div>`).join('');
+    pendingListEl.querySelectorAll('.btn-approve').forEach(b => b.addEventListener('click', async (e) => {
+      const row = e.target.closest('.req-row');
+      const email = row.querySelector('span').textContent;
+      await rpc('busca_imovel_admin_approve', { p_admin_key: key, p_email: email });
+      loadAdminData(key);
+    }));
+    pendingListEl.querySelectorAll('.btn-deny').forEach(b => b.addEventListener('click', async (e) => {
+      const row = e.target.closest('.req-row');
+      const id = row.dataset.id;
+      await rpc('busca_imovel_admin_deny', { p_admin_key: key, p_id: Number(id) });
+      loadAdminData(key);
+    }));
+  }
+
+  // ============ UPLOAD DE PLANILHA (área do admin) ============
+  const planilhaFileInput = document.getElementById('planilha-file');
+  const planilhaUploadBtn = document.getElementById('planilha-upload-btn');
+  const planilhaStatusEl = document.getElementById('planilha-status');
+
+  // Nomes das colunas exatamente como vêm no export do Mastertable/Jestor.
+  const PLANILHA_COLUMNS = {
+    'Nome interno': 'nome_interno',
+    'Stays ID': 'stays_id',
+    'Título': 'titulo',
+    'Unidade de Negócio': 'unidade_negocio',
+    'Unidades de negócio nomeadas': 'rota',
+    'Líderes': 'lider',
+    'Status': 'status',
+  };
+
+  planilhaUploadBtn.addEventListener('click', async () => {
+    const file = planilhaFileInput.files[0];
+    if (!file) {
+      planilhaStatusEl.textContent = 'Escolha um arquivo .xlsx primeiro.';
+      planilhaStatusEl.className = 'status error';
+      return;
+    }
+
+    planilhaUploadBtn.disabled = true;
+    planilhaStatusEl.textContent = 'Lendo planilha...';
+    planilhaStatusEl.className = 'status';
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+
+      if (rawRows.length === 0) throw new Error('Planilha vazia ou formato não reconhecido.');
+
+      const headerKeys = Object.keys(rawRows[0]);
+      const missingCols = Object.keys(PLANILHA_COLUMNS).filter(c => !headerKeys.includes(c));
+      if (missingCols.length > 0) {
+        throw new Error(`Colunas faltando na planilha: ${missingCols.join(', ')}`);
+      }
+
+      const rows = rawRows.map(r => {
+        const mapped = {};
+        for (const [col, key] of Object.entries(PLANILHA_COLUMNS)) {
+          const v = r[col];
+          mapped[key] = (v === null || v === undefined) ? null : String(v).trim();
+        }
+        return mapped;
+      }).filter(r => r.nome_interno);
+
+      planilhaStatusEl.textContent = `Enviando ${rows.length} linha(s)...`;
+
+      const count = await rpc('busca_imovel_admin_replace_planilha', {
+        p_admin_key: adminKeyInput.value,
+        p_rows: rows,
+      });
+
+      planilhaStatusEl.textContent = `Planilha atualizada! ${count} imóveis carregados.`;
+      planilhaStatusEl.className = 'status ok';
+      planilhaFileInput.value = '';
+    } catch (err) {
+      planilhaStatusEl.textContent = `Erro: ${err.message}`;
+      planilhaStatusEl.className = 'status error';
+    } finally {
+      planilhaUploadBtn.disabled = false;
+    }
+  });
+
+  function renderAllowed(rows, key) {
+    if (rows.length === 0) { allowedListEl.innerHTML = '<div class="status">Ninguém liberado ainda.</div>'; return; }
+    allowedListEl.innerHTML = rows.map(r => `
+      <div class="allowed-row">
+        <span>${escapeHtml(r.email)}</span>
+        <button class="btn-revoke">Remover</button>
+      </div>`).join('');
+    allowedListEl.querySelectorAll('.btn-revoke').forEach(b => b.addEventListener('click', async (e) => {
+      const row = e.target.closest('.allowed-row');
+      const email = row.querySelector('span').textContent;
+      if (!confirm(`Remover acesso de ${email}?`)) return;
+      await rpc('busca_imovel_admin_revoke', { p_admin_key: key, p_email: email });
+      loadAdminData(key);
+    }));
+  }
+</script>
+</body>
+</html>
