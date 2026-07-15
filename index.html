@@ -651,6 +651,7 @@
   const rotasStatusEl = document.getElementById('rotas-status');
   const rotasListEl = document.getElementById('rotas-list');
   let rotasLoaded = false;
+  let canEditCargo = false;
 
   tabSearch.addEventListener('click', () => {
     tabSearch.classList.add('active');
@@ -671,8 +672,12 @@
     rotasStatusEl.textContent = 'Carregando...';
     rotasListEl.innerHTML = '';
     try {
-      const rows = await rpc('busca_imovel_rotas_equipe', {});
+      const [rows, editor] = await Promise.all([
+        rpc('busca_imovel_rotas_equipe', {}),
+        rpc('busca_imovel_check_cargo_editor', { p_email: currentEmail }),
+      ]);
       rotasLoaded = true;
+      canEditCargo = editor;
       renderRotasEquipe(rows);
     } catch (err) {
       rotasStatusEl.textContent = `Erro ao carregar: ${err.message}`;
@@ -719,11 +724,15 @@
               <div class="colab-nome">${escapeHtml(c.nome)}</div>
               <div class="colab-tel">${escapeHtml(c.telefone) || 'sem telefone'}</div>
             </div>
-            <input type="text" class="cargo-input" placeholder="Cargo (ex: Agente)" value="${escapeHtml(c.cargo)}" />
+            ${canEditCargo
+              ? `<input type="text" class="cargo-input" placeholder="Cargo (ex: Agente)" value="${escapeHtml(c.cargo)}" />`
+              : `<span class="card-sub" style="margin:0">${escapeHtml(c.cargo) || 'sem cargo definido'}</span>`}
           </div>
         `).join('')}
       </div>
     `).join('');
+
+    if (!canEditCargo) return;
 
     rotasListEl.querySelectorAll('.cargo-input').forEach(input => {
       input.addEventListener('change', async () => {
