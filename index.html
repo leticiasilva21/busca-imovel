@@ -152,6 +152,58 @@
   }
   footer a { color: #b0b0b8; }
 
+  .view-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .view-tab {
+    background: none;
+    color: var(--muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 8px 4px;
+    font-weight: 600;
+  }
+  .view-tab.active {
+    color: var(--accent-dark);
+    border-bottom-color: var(--accent);
+  }
+  .rota-card { margin-bottom: 16px; }
+  .rota-nome { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .lider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff7ed;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 8px 0 12px;
+    font-size: 13px;
+  }
+  .colab-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .colab-row:last-child { border-bottom: none; }
+  .colab-info { flex: 1; min-width: 0; }
+  .colab-nome { font-weight: 600; }
+  .colab-tel { color: var(--muted); font-size: 12px; }
+  .cargo-input {
+    width: 160px;
+    padding: 6px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
   .gate {
     max-width: 380px;
     margin: 60px auto;
@@ -220,16 +272,30 @@
 
   <!-- APP: ferramenta de busca (só aparece após login) -->
   <div class="wrap hidden" id="app">
-    <h1>Busca de Imóvel</h1>
-    <p class="subtitle">Consulte por código Stays, nome interno ou título — cruza dados ao vivo do Supabase com a planilha do Mastertable.</p>
-
-    <div class="search-box">
-      <input type="text" id="q" placeholder="Ex: MR12I, PB-CAB-IT.Azimut101... ou Mana Beach" />
-      <button id="btn">Buscar</button>
+    <div class="view-tabs">
+      <button id="tab-search" class="view-tab active">Buscar Imóvel</button>
+      <button id="tab-rotas" class="view-tab">Rotas e Equipe</button>
     </div>
 
-    <div class="status" id="status"></div>
-    <div id="results"></div>
+    <div id="search-view">
+      <h1>Busca de Imóvel</h1>
+      <p class="subtitle">Consulte por código Stays, nome interno ou título — cruza dados ao vivo do Supabase com a planilha do Mastertable.</p>
+
+      <div class="search-box">
+        <input type="text" id="q" placeholder="Ex: MR12I, PB-CAB-IT.Azimut101... ou Mana Beach" />
+        <button id="btn">Buscar</button>
+      </div>
+
+      <div class="status" id="status"></div>
+      <div id="results"></div>
+    </div>
+
+    <div id="rotas-view" class="hidden">
+      <h1>Rotas e Equipe</h1>
+      <p class="subtitle">Líder e colaboradores de cada rota, com telefone (fonte: pontômetro). Cargo é editável por qualquer pessoa logada.</p>
+      <div class="status" id="rotas-status">Carregando...</div>
+      <div id="rotas-list"></div>
+    </div>
 
     <div class="admin-toggle">
       <button id="admin-link">Área do admin</button>
@@ -355,7 +421,10 @@
   const gateBtn = document.getElementById('gate-btn');
   const gateStatus = document.getElementById('gate-status');
 
-  function showApp() {
+  let currentEmail = null;
+
+  function showApp(email) {
+    currentEmail = email;
     gateEl.classList.add('hidden');
     appEl.classList.remove('hidden');
   }
@@ -377,7 +446,7 @@
       if (allowed) {
         if (remember) safeStorage.set(LS_EMAIL_KEY, email);
         else safeStorage.remove(LS_EMAIL_KEY);
-        showApp();
+        showApp(email);
         return;
       }
       const result = await rpc('busca_imovel_request_access', { p_email: email });
@@ -422,7 +491,7 @@
     if (!savedEmail) { showGate(''); return; }
     try {
       const allowed = await rpc('busca_imovel_check_access', { p_email: savedEmail });
-      if (allowed) showApp();
+      if (allowed) showApp(savedEmail);
       else { safeStorage.remove(LS_EMAIL_KEY); showGate('Seu acesso foi removido. Entre novamente.', 'warn'); }
     } catch (err) {
       showGate(`Erro ao verificar acesso: ${err.message}`, 'error');
@@ -573,6 +642,108 @@
 
   btn.addEventListener('click', search);
   qInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+
+  // ============ ABAS (Buscar Imóvel / Rotas e Equipe) ============
+  const tabSearch = document.getElementById('tab-search');
+  const tabRotas = document.getElementById('tab-rotas');
+  const searchView = document.getElementById('search-view');
+  const rotasView = document.getElementById('rotas-view');
+  const rotasStatusEl = document.getElementById('rotas-status');
+  const rotasListEl = document.getElementById('rotas-list');
+  let rotasLoaded = false;
+
+  tabSearch.addEventListener('click', () => {
+    tabSearch.classList.add('active');
+    tabRotas.classList.remove('active');
+    searchView.classList.remove('hidden');
+    rotasView.classList.add('hidden');
+  });
+
+  tabRotas.addEventListener('click', () => {
+    tabRotas.classList.add('active');
+    tabSearch.classList.remove('active');
+    rotasView.classList.remove('hidden');
+    searchView.classList.add('hidden');
+    if (!rotasLoaded) loadRotasEquipe();
+  });
+
+  async function loadRotasEquipe() {
+    rotasStatusEl.textContent = 'Carregando...';
+    rotasListEl.innerHTML = '';
+    try {
+      const rows = await rpc('busca_imovel_rotas_equipe', {});
+      rotasLoaded = true;
+      renderRotasEquipe(rows);
+    } catch (err) {
+      rotasStatusEl.textContent = `Erro ao carregar: ${err.message}`;
+      rotasStatusEl.className = 'status error';
+    }
+  }
+
+  function renderRotasEquipe(rows) {
+    const rotas = new Map();
+    rows.forEach(r => {
+      if (!rotas.has(r.rota_id)) {
+        rotas.set(r.rota_id, {
+          nome: r.rota_nome,
+          regiao: r.rota_regiao,
+          lider_nome: r.lider_nome,
+          lider_telefone: r.lider_telefone,
+          colaboradores: [],
+        });
+      }
+      if (r.colaborador_id) {
+        rotas.get(r.rota_id).colaboradores.push({
+          id: r.colaborador_id,
+          nome: r.colaborador_nome,
+          telefone: r.colaborador_telefone,
+          cargo: r.cargo_label,
+        });
+      }
+    });
+
+    rotasStatusEl.textContent = `${rotas.size} rota(s).`;
+    rotasStatusEl.className = 'status';
+
+    rotasListEl.innerHTML = Array.from(rotas.values()).map(rota => `
+      <div class="card rota-card">
+        <div class="rota-nome">${escapeHtml(rota.nome)}</div>
+        ${rota.regiao ? `<div class="card-sub">Região: ${escapeHtml(rota.regiao)}</div>` : ''}
+        <div class="lider-row">
+          <span>👤 Líder: <strong>${escapeHtml(rota.lider_nome) || '—'}</strong></span>
+          <span>${escapeHtml(rota.lider_telefone) || '—'}</span>
+        </div>
+        ${rota.colaboradores.map(c => `
+          <div class="colab-row" data-colab-id="${c.id}">
+            <div class="colab-info">
+              <div class="colab-nome">${escapeHtml(c.nome)}</div>
+              <div class="colab-tel">${escapeHtml(c.telefone) || 'sem telefone'}</div>
+            </div>
+            <input type="text" class="cargo-input" placeholder="Cargo (ex: Agente)" value="${escapeHtml(c.cargo)}" />
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+
+    rotasListEl.querySelectorAll('.cargo-input').forEach(input => {
+      input.addEventListener('change', async () => {
+        const row = input.closest('.colab-row');
+        const colabId = row.dataset.colabId;
+        input.disabled = true;
+        try {
+          await rpc('busca_imovel_set_cargo', {
+            p_email: currentEmail,
+            p_colaborador_id: colabId,
+            p_cargo_label: input.value,
+          });
+        } catch (err) {
+          alert(`Erro ao salvar cargo: ${err.message}`);
+        } finally {
+          input.disabled = false;
+        }
+      });
+    });
+  }
 
   // ============ PAINEL DE ADMIN ============
   const adminLink = document.getElementById('admin-link');
