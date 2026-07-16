@@ -462,9 +462,34 @@
   const gateStatus = document.getElementById('gate-status');
 
   let currentEmail = null;
+  let canDeleteImovel = false;
+  let excludedSet = new Set();
 
-  function showApp(email) {
+  async function fetchExcludedSet() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/busca_imovel_imoveis_excluidos?select=nome_interno&limit=5000`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      });
+      if (!res.ok) return new Set();
+      const rows = await res.json();
+      return new Set(rows.map(r => r.nome_interno));
+    } catch {
+      return new Set();
+    }
+  }
+
+  async function showApp(email) {
     currentEmail = email;
+    try {
+      const [excluded, delAccess] = await Promise.all([
+        fetchExcludedSet(),
+        rpc('busca_imovel_check_delete_access', { p_email: email }),
+      ]);
+      excludedSet = excluded;
+      canDeleteImovel = delAccess;
+    } catch {
+      // nao bloqueia o login por causa disso
+    }
     gateEl.classList.add('hidden');
     appEl.classList.remove('hidden');
   }
@@ -616,7 +641,9 @@
         });
       }
     });
-    return Array.from(map.values()).sort((a, b) => (a.nome_interno || '').localeCompare(b.nome_interno || ''));
+    return Array.from(map.values())
+      .filter(r => !excludedSet.has(r.nome_interno))
+      .sort((a, b) => (a.nome_interno || '').localeCompare(b.nome_interno || ''));
   }
 
   async function search() {
@@ -650,7 +677,7 @@
   function imovelCardHtml(r) {
     const isLive = r.sources.includes('imoveis');
     return `
-      <div class="card">
+      <div class="card" data-nome-interno="${escapeHtml(r.nome_interno)}">
         <div class="card-title">${escapeHtml(r.titulo || r.nome_interno)}</div>
         <div class="card-sub">${escapeHtml(r.nome_interno)}${r.stays_id ? ' · Stays: ' + escapeHtml(r.stays_id) : ''}</div>
         <div class="fields">
@@ -661,8 +688,29 @@
         <div class="badges">
           ${isLive ? '<span class="badge live">Ao vivo (Supabase)</span>' : '<span class="badge warn">Só na planilha — checar sincronização</span>'}
           ${r.status ? `<span class="badge ${r.status !== 'Ativo' ? 'inactive' : ''}">${escapeHtml(r.status)}</span>` : ''}
+          ${canDeleteImovel ? '<button class="btn-deny btn-excluir-imovel" style="margin-left:auto">Excluir</button>' : ''}
         </div>
       </div>`;
+  }
+
+  function attachDeleteHandlers(container) {
+    if (!canDeleteImovel) return;
+    container.querySelectorAll('.btn-excluir-imovel').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const card = btn.closest('.card');
+        const nomeInterno = card.dataset.nomeInterno;
+        if (!confirm(`Excluir "${nomeInterno}" da ferramenta?\n\nIsso impede que ele volte a aparecer, mesmo em uploads futuros da planilha do Mastertable.`)) return;
+        btn.disabled = true;
+        try {
+          await rpc('busca_imovel_delete_imovel', { p_email: currentEmail, p_nome_interno: nomeInterno, p_motivo: null });
+          excludedSet.add(nomeInterno);
+          card.remove();
+        } catch (err) {
+          alert(`Erro ao excluir: ${err.message}`);
+          btn.disabled = false;
+        }
+      });
+    });
   }
 
   function render(rows, term, anyError) {
@@ -680,6 +728,7 @@
     statusEl.className = anyError ? 'status warn' : 'status';
 
     resultsEl.innerHTML = rows.map(imovelCardHtml).join('');
+    attachDeleteHandlers(resultsEl);
   }
 
   btn.addEventListener('click', search);
@@ -808,8 +857,21 @@
 
   let filtrosCarregados = false;
   let imoveisRotaDataAtual = [];
+  let imoveisRotaBase = [];
+  let imoveisRotaModo = null; // 'rota' | 'lider' | null
+  let todosLideres = [];
 
   const ROTA_OPTIONS = Array.from(new Set(Object.values(ROTA_MAP))).sort((a, b) => a.localeCompare(b));
+
+  function populateSelect(select, values, defaultLabel) {
+    select.innerHTML = `<option value="">${defaultLabel}</option>`;
+    values.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
+    });
+  }
 
   function unidadesForRota(rota) {
     return Object.entries(ROTA_MAP).filter(([, v]) => v === rota).map(([k]) => k);
@@ -832,20 +894,10 @@
 
   async function loadFiltrosImoveisPorRota() {
     filtrosCarregados = true;
-    ROTA_OPTIONS.forEach(rota => {
-      const opt = document.createElement('option');
-      opt.value = rota;
-      opt.textContent = rota;
-      rotaSelect.appendChild(opt);
-    });
+    populateSelect(rotaSelect, ROTA_OPTIONS, 'Todas');
     try {
-      const lideres = await fetchDistinctLideres();
-      lideres.forEach(lider => {
-        const opt = document.createElement('option');
-        opt.value = lider;
-        opt.textContent = lider;
-        liderSelect.appendChild(opt);
-      });
+      todosLideres = await fetchDistinctLideres();
+      populateSelect(liderSelect, todosLideres, 'Todos');
     } catch (err) {
       imoveisRotaStatusEl.textContent = `Erro ao carregar líderes: ${err.message}`;
       imoveisRotaStatusEl.className = 'status error';
@@ -906,17 +958,31 @@
     imoveisRotaStatusEl.textContent = `${filtrados.length} imóvel(is).`;
     imoveisRotaStatusEl.className = 'status';
     imoveisRotaResultsEl.innerHTML = filtrados.map(imovelCardHtml).join('');
+    attachDeleteHandlers(imoveisRotaResultsEl);
   }
 
+  // Ao escolher uma rota: carrega os imóveis dela e estreita o select de líder para
+  // mostrar só quem lidera essa rota. Ao escolher um líder dentro dela, só filtra
+  // localmente (já temos os dados). Limpar a rota restaura a lista completa de líderes.
   rotaSelect.addEventListener('change', async () => {
     const rota = rotaSelect.value;
-    liderSelect.value = '';
     buscaLocalInput.value = '';
-    if (!rota) { imoveisRotaDataAtual = []; renderImoveisRotaLista(); return; }
+    if (!rota) {
+      imoveisRotaModo = null;
+      imoveisRotaBase = [];
+      imoveisRotaDataAtual = [];
+      populateSelect(liderSelect, todosLideres, 'Todos');
+      renderImoveisRotaLista();
+      return;
+    }
     imoveisRotaStatusEl.textContent = 'Carregando...';
     imoveisRotaStatusEl.className = 'status';
     try {
-      imoveisRotaDataAtual = await fetchImoveisByRota(rota);
+      imoveisRotaBase = await fetchImoveisByRota(rota);
+      imoveisRotaModo = 'rota';
+      const lideresDaRota = Array.from(new Set(imoveisRotaBase.map(r => r.lider).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+      populateSelect(liderSelect, lideresDaRota, 'Todos');
+      imoveisRotaDataAtual = imoveisRotaBase;
       renderImoveisRotaLista();
     } catch (err) {
       imoveisRotaStatusEl.textContent = `Erro: ${err.message}`;
@@ -924,15 +990,36 @@
     }
   });
 
+  // Ao escolher um líder: se já tem uma rota carregada, só filtra a lista local
+  // (o líder já é um dos que atuam nessa rota). Sem rota selecionada, busca por líder
+  // e estreita o select de rota para mostrar só as rotas onde ele aparece.
   liderSelect.addEventListener('change', async () => {
     const lider = liderSelect.value;
-    rotaSelect.value = '';
     buscaLocalInput.value = '';
-    if (!lider) { imoveisRotaDataAtual = []; renderImoveisRotaLista(); return; }
+
+    if (imoveisRotaModo === 'rota') {
+      imoveisRotaDataAtual = lider ? imoveisRotaBase.filter(r => r.lider === lider) : imoveisRotaBase;
+      renderImoveisRotaLista();
+      return;
+    }
+
+    if (!lider) {
+      imoveisRotaModo = null;
+      imoveisRotaBase = [];
+      imoveisRotaDataAtual = [];
+      populateSelect(rotaSelect, ROTA_OPTIONS, 'Todas');
+      renderImoveisRotaLista();
+      return;
+    }
+
     imoveisRotaStatusEl.textContent = 'Carregando...';
     imoveisRotaStatusEl.className = 'status';
     try {
-      imoveisRotaDataAtual = await fetchImoveisByLider(lider);
+      imoveisRotaBase = await fetchImoveisByLider(lider);
+      imoveisRotaModo = 'lider';
+      const rotasDoLider = Array.from(new Set(imoveisRotaBase.map(r => r.rota).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+      populateSelect(rotaSelect, rotasDoLider, 'Todas');
+      imoveisRotaDataAtual = imoveisRotaBase;
       renderImoveisRotaLista();
     } catch (err) {
       imoveisRotaStatusEl.textContent = `Erro: ${err.message}`;
