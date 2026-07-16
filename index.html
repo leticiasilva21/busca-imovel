@@ -110,7 +110,7 @@
   }
   .fields {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     gap: 10px 16px;
   }
   .field-label {
@@ -174,7 +174,7 @@
   .view-tab:hover { color: #fff; }
   .filter-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 12px;
     margin-bottom: 12px;
   }
@@ -320,7 +320,7 @@
 
     <div id="imoveis-rota-view" class="hidden">
       <h1>Imóveis por Rota</h1>
-      <p class="subtitle">Selecione uma rota ou um líder para ver todos os imóveis correspondentes.</p>
+      <p class="subtitle">Selecione uma rota, um líder ou uma região/praia para ver todos os imóveis correspondentes.</p>
 
       <div class="filter-row">
         <div class="filter-col">
@@ -330,6 +330,10 @@
         <div class="filter-col">
           <label class="field-label" for="filtro-lider">Líder</label>
           <select id="filtro-lider"><option value="">Todos</option></select>
+        </div>
+        <div class="filter-col">
+          <label class="field-label" for="filtro-bairro">Região/Praia</label>
+          <select id="filtro-bairro"><option value="">Todas</option></select>
         </div>
       </div>
 
@@ -368,7 +372,7 @@
         <div class="card">
           <p class="card-sub" style="margin-bottom:10px">
             Envie o .xlsx exportado do Mastertable (colunas: Nome interno, Stays ID, Título, Unidade de Negócio,
-            Unidades de negócio nomeadas, Líderes, Status). Isso <strong>substitui totalmente</strong> o snapshot
+            Unidades de negócio nomeadas, Líderes, Status, Bairro). Isso <strong>substitui totalmente</strong> o snapshot
             usado como fallback quando o imóvel ainda não está no Supabase ao vivo.
           </p>
           <input type="file" id="planilha-file" accept=".xlsx,.xls" />
@@ -597,7 +601,7 @@
   async function fetchFromPlanilha(term) {
     const orFilter = buildOrFilter(term);
     const url = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha`
-      + `?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status`
+      + `?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status,bairro`
       + `&status=eq.Ativo`
       + `&or=(${encodeURIComponent(orFilter)})`
       + `&order=nome_interno.asc&limit=30`;
@@ -624,7 +628,7 @@
       map.set(keyOf(r), {
         nome_interno: r.nome_interno, stays_id: r.stays_id, titulo: r.titulo,
         rota: ROTA_MAP[r.unidade_negocio] || null, unidade_negocio: r.unidade_negocio,
-        lider: r.lider, status: r.status, sources: ['imoveis'],
+        lider: r.lider, status: r.status, bairro: null, sources: ['imoveis'],
       });
     });
     planilhaRows.forEach(r => {
@@ -637,11 +641,12 @@
         existing.unidade_negocio = existing.unidade_negocio || r.unidade_negocio;
         existing.lider = existing.lider || r.lider;
         existing.status = existing.status || r.status;
+        existing.bairro = existing.bairro || r.bairro;
       } else {
         map.set(key, {
           nome_interno: r.nome_interno, stays_id: r.stays_id, titulo: r.titulo,
           rota: r.rota, unidade_negocio: r.unidade_negocio, lider: r.lider,
-          status: r.status, sources: ['planilha'],
+          status: r.status, bairro: r.bairro, sources: ['planilha'],
         });
       }
     });
@@ -687,6 +692,7 @@
         <div class="fields">
           <div><div class="field-label">Rota</div><div class="field-value">${escapeHtml(r.rota) || '—'}</div></div>
           <div><div class="field-label">Líder</div><div class="field-value">${escapeHtml(r.lider) || '—'}</div></div>
+          <div><div class="field-label">Região</div><div class="field-value">${escapeHtml(r.bairro) || '—'}</div></div>
         </div>
         ${r.unidade_negocio && r.unidade_negocio !== '-' ? `<div class="card-sub" style="margin-top:8px">Unidade de negócio: ${escapeHtml(r.unidade_negocio)}</div>` : ''}
         <div class="badges">
@@ -865,9 +871,10 @@
     });
   }
 
-  // ============ IMÓVEIS POR ROTA / LÍDER ============
+  // ============ IMÓVEIS POR ROTA / LÍDER / REGIÃO ============
   const rotaSelect = document.getElementById('filtro-rota');
   const liderSelect = document.getElementById('filtro-lider');
+  const bairroSelect = document.getElementById('filtro-bairro');
   const buscaLocalInput = document.getElementById('filtro-busca-local');
   const imoveisRotaStatusEl = document.getElementById('imoveis-rota-status');
   const imoveisRotaResultsEl = document.getElementById('imoveis-rota-results');
@@ -875,8 +882,9 @@
   let filtrosCarregados = false;
   let imoveisRotaDataAtual = [];
   let imoveisRotaBase = [];
-  let imoveisRotaModo = null; // 'rota' | 'lider' | null
+  let imoveisRotaModo = null; // 'rota' | 'lider' | 'bairro' | null
   let todosLideres = [];
+  let todosBairros = [];
 
   const ROTA_OPTIONS = Array.from(new Set(Object.values(ROTA_MAP))).sort((a, b) => a.localeCompare(b));
 
@@ -898,14 +906,17 @@
     return values.map(v => `"${String(v).replace(/"/g, '\\"')}"`).join(',');
   }
 
-  async function fetchDistinctLideres() {
+  async function fetchDistinctValues(campo) {
     const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
-    const [r1, r2] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/imoveis?select=lider&lider=not.is.null&limit=3000`, { headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=lider&status=eq.Ativo&lider=not.is.null&limit=3000`, { headers }),
-    ]);
-    const [a, b] = await Promise.all([r1.json(), r2.json()]);
-    const set = new Set([...a, ...b].map(r => r.lider).filter(Boolean));
+    const requests = [
+      fetch(`${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=${campo}&status=eq.Ativo&${campo}=not.is.null&limit=3000`, { headers }),
+    ];
+    if (campo === 'lider') {
+      requests.push(fetch(`${SUPABASE_URL}/rest/v1/imoveis?select=lider&lider=not.is.null&limit=3000`, { headers }));
+    }
+    const responses = await Promise.all(requests);
+    const jsons = await Promise.all(responses.map(r => r.json()));
+    const set = new Set(jsons.flat().map(r => r[campo]).filter(Boolean));
     return Array.from(set).sort((x, y) => x.localeCompare(y));
   }
 
@@ -913,10 +924,14 @@
     filtrosCarregados = true;
     populateSelect(rotaSelect, ROTA_OPTIONS, 'Todas');
     try {
-      todosLideres = await fetchDistinctLideres();
+      [todosLideres, todosBairros] = await Promise.all([
+        fetchDistinctValues('lider'),
+        fetchDistinctValues('bairro'),
+      ]);
       populateSelect(liderSelect, todosLideres, 'Todos');
+      populateSelect(bairroSelect, todosBairros, 'Todas');
     } catch (err) {
-      imoveisRotaStatusEl.textContent = `Erro ao carregar líderes: ${err.message}`;
+      imoveisRotaStatusEl.textContent = `Erro ao carregar filtros: ${err.message}`;
       imoveisRotaStatusEl.className = 'status error';
     }
   }
@@ -932,7 +947,7 @@
       if (!res1.ok) throw new Error(`Erro ${res1.status} (Supabase imoveis)`);
       imoveisRows = dedupeByKey(await res1.json());
     }
-    const url2 = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status`
+    const url2 = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status,bairro`
       + `&status=eq.Ativo&rota=eq.${encodeURIComponent(rota)}&order=nome_interno.asc&limit=1000`;
     const res2 = await fetch(url2, { headers });
     if (!res2.ok) throw new Error(`Erro ${res2.status} (planilha)`);
@@ -944,7 +959,7 @@
     const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
     const url1 = `${SUPABASE_URL}/rest/v1/imoveis?select=nome_interno,stays_id,titulo,unidade_negocio,lider,status`
       + `&lider=eq.${encodeURIComponent(lider)}&order=nome_interno.asc&limit=1000`;
-    const url2 = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status`
+    const url2 = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status,bairro`
       + `&status=eq.Ativo&lider=eq.${encodeURIComponent(lider)}&order=nome_interno.asc&limit=1000`;
     const [res1, res2] = await Promise.all([fetch(url1, { headers }), fetch(url2, { headers })]);
     if (!res1.ok) throw new Error(`Erro ${res1.status} (Supabase imoveis)`);
@@ -952,6 +967,42 @@
     const imoveisRows = dedupeByKey(await res1.json());
     const planilhaRows = dedupeByKey(await res2.json());
     return mergeSources(imoveisRows, planilhaRows);
+  }
+
+  async function fetchImoveisByBairro(bairro) {
+    // Região/praia só existe na planilha (public.imoveis não tem essa coluna ainda).
+    const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+    const url = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=nome_interno,stays_id,titulo,unidade_negocio,rota,lider,status,bairro`
+      + `&status=eq.Ativo&bairro=eq.${encodeURIComponent(bairro)}&order=nome_interno.asc&limit=1000`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Erro ${res.status} (planilha)`);
+    const planilhaRows = dedupeByKey(await res.json());
+    return mergeSources([], planilhaRows);
+  }
+
+  function distinctField(rows, campo) {
+    return Array.from(new Set(rows.map(r => r[campo]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }
+
+  // Aplica os filtros que NÃO são a dimensão que dirigiu a busca (imoveisRotaModo)
+  // como um recorte local sobre imoveisRotaBase, sem nova consulta ao Supabase.
+  function refiltrarLocal() {
+    let dados = imoveisRotaBase;
+    if (imoveisRotaModo !== 'lider' && liderSelect.value) dados = dados.filter(r => r.lider === liderSelect.value);
+    if (imoveisRotaModo !== 'bairro' && bairroSelect.value) dados = dados.filter(r => r.bairro === bairroSelect.value);
+    if (imoveisRotaModo !== 'rota' && rotaSelect.value) dados = dados.filter(r => r.rota === rotaSelect.value);
+    imoveisRotaDataAtual = dados;
+    renderImoveisRotaLista();
+  }
+
+  function resetFiltrosImoveisPorRota() {
+    imoveisRotaModo = null;
+    imoveisRotaBase = [];
+    imoveisRotaDataAtual = [];
+    populateSelect(rotaSelect, ROTA_OPTIONS, 'Todas');
+    populateSelect(liderSelect, todosLideres, 'Todos');
+    populateSelect(bairroSelect, todosBairros, 'Todas');
+    renderImoveisRotaLista();
   }
 
   function renderImoveisRotaLista() {
@@ -965,7 +1016,7 @@
 
     if (filtrados.length === 0) {
       imoveisRotaStatusEl.textContent = imoveisRotaDataAtual.length === 0
-        ? 'Selecione uma rota ou um líder para ver os imóveis.'
+        ? 'Selecione uma rota, um líder ou uma região/praia para ver os imóveis.'
         : `Nenhum imóvel bate com "${termo}" nesta lista.`;
       imoveisRotaStatusEl.className = 'status';
       imoveisRotaResultsEl.innerHTML = '';
@@ -978,71 +1029,68 @@
     attachDeleteHandlers(imoveisRotaResultsEl);
   }
 
-  // Ao escolher uma rota: carrega os imóveis dela e estreita o select de líder para
-  // mostrar só quem lidera essa rota. Ao escolher um líder dentro dela, só filtra
-  // localmente (já temos os dados). Limpar a rota restaura a lista completa de líderes.
-  rotaSelect.addEventListener('change', async () => {
-    const rota = rotaSelect.value;
-    buscaLocalInput.value = '';
-    if (!rota) {
-      imoveisRotaModo = null;
-      imoveisRotaBase = [];
-      imoveisRotaDataAtual = [];
-      populateSelect(liderSelect, todosLideres, 'Todos');
-      renderImoveisRotaLista();
-      return;
-    }
-    imoveisRotaStatusEl.textContent = 'Carregando...';
-    imoveisRotaStatusEl.className = 'status';
-    try {
-      imoveisRotaBase = await fetchImoveisByRota(rota);
-      imoveisRotaModo = 'rota';
-      const lideresDaRota = Array.from(new Set(imoveisRotaBase.map(r => r.lider).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-      populateSelect(liderSelect, lideresDaRota, 'Todos');
-      imoveisRotaDataAtual = imoveisRotaBase;
-      renderImoveisRotaLista();
-    } catch (err) {
-      imoveisRotaStatusEl.textContent = `Erro: ${err.message}`;
-      imoveisRotaStatusEl.className = 'status error';
-    }
-  });
+  // Cada select pode "dirigir" a busca (dispara fetch e estreita os outros dois) quando
+  // nada mais está dirigindo, ou apenas refinar localmente quando já existe uma base
+  // carregada por outra dimensão. Limpar a dimensão que está dirigindo reseta tudo.
+  function criarHandlerFiltro(select, dimensao, fetchFn, narrowFields) {
+    select.addEventListener('change', async () => {
+      const valor = select.value;
+      buscaLocalInput.value = '';
 
-  // Ao escolher um líder: se já tem uma rota carregada, só filtra a lista local
-  // (o líder já é um dos que atuam nessa rota). Sem rota selecionada, busca por líder
-  // e estreita o select de rota para mostrar só as rotas onde ele aparece.
-  liderSelect.addEventListener('change', async () => {
-    const lider = liderSelect.value;
-    buscaLocalInput.value = '';
+      if (imoveisRotaModo === dimensao) {
+        if (!valor) { resetFiltrosImoveisPorRota(); return; }
+        imoveisRotaStatusEl.textContent = 'Carregando...';
+        imoveisRotaStatusEl.className = 'status';
+        try {
+          imoveisRotaBase = await fetchFn(valor);
+          narrowFields.forEach(([outroSelect, campo, label]) => {
+            populateSelect(outroSelect, distinctField(imoveisRotaBase, campo), label);
+          });
+          imoveisRotaDataAtual = imoveisRotaBase;
+          renderImoveisRotaLista();
+        } catch (err) {
+          imoveisRotaStatusEl.textContent = `Erro: ${err.message}`;
+          imoveisRotaStatusEl.className = 'status error';
+        }
+        return;
+      }
 
-    if (imoveisRotaModo === 'rota') {
-      imoveisRotaDataAtual = lider ? imoveisRotaBase.filter(r => r.lider === lider) : imoveisRotaBase;
-      renderImoveisRotaLista();
-      return;
-    }
+      if (imoveisRotaModo === null) {
+        if (!valor) { renderImoveisRotaLista(); return; }
+        imoveisRotaStatusEl.textContent = 'Carregando...';
+        imoveisRotaStatusEl.className = 'status';
+        try {
+          imoveisRotaBase = await fetchFn(valor);
+          imoveisRotaModo = dimensao;
+          narrowFields.forEach(([outroSelect, campo, label]) => {
+            populateSelect(outroSelect, distinctField(imoveisRotaBase, campo), label);
+          });
+          imoveisRotaDataAtual = imoveisRotaBase;
+          renderImoveisRotaLista();
+        } catch (err) {
+          imoveisRotaStatusEl.textContent = `Erro: ${err.message}`;
+          imoveisRotaStatusEl.className = 'status error';
+        }
+        return;
+      }
 
-    if (!lider) {
-      imoveisRotaModo = null;
-      imoveisRotaBase = [];
-      imoveisRotaDataAtual = [];
-      populateSelect(rotaSelect, ROTA_OPTIONS, 'Todas');
-      renderImoveisRotaLista();
-      return;
-    }
+      // outra dimensão está dirigindo; este select só refina localmente
+      refiltrarLocal();
+    });
+  }
 
-    imoveisRotaStatusEl.textContent = 'Carregando...';
-    imoveisRotaStatusEl.className = 'status';
-    try {
-      imoveisRotaBase = await fetchImoveisByLider(lider);
-      imoveisRotaModo = 'lider';
-      const rotasDoLider = Array.from(new Set(imoveisRotaBase.map(r => r.rota).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-      populateSelect(rotaSelect, rotasDoLider, 'Todas');
-      imoveisRotaDataAtual = imoveisRotaBase;
-      renderImoveisRotaLista();
-    } catch (err) {
-      imoveisRotaStatusEl.textContent = `Erro: ${err.message}`;
-      imoveisRotaStatusEl.className = 'status error';
-    }
-  });
+  criarHandlerFiltro(rotaSelect, 'rota', fetchImoveisByRota, [
+    [liderSelect, 'lider', 'Todos'],
+    [bairroSelect, 'bairro', 'Todas'],
+  ]);
+  criarHandlerFiltro(liderSelect, 'lider', fetchImoveisByLider, [
+    [rotaSelect, 'rota', 'Todas'],
+    [bairroSelect, 'bairro', 'Todas'],
+  ]);
+  criarHandlerFiltro(bairroSelect, 'bairro', fetchImoveisByBairro, [
+    [rotaSelect, 'rota', 'Todas'],
+    [liderSelect, 'lider', 'Todos'],
+  ]);
 
   buscaLocalInput.addEventListener('input', renderImoveisRotaLista);
 
@@ -1126,6 +1174,7 @@
     'Unidades de negócio nomeadas': 'rota',
     'Líderes': 'lider',
     'Status': 'status',
+    'Bairro': 'bairro',
   };
 
   planilhaUploadBtn.addEventListener('click', async () => {
