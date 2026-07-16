@@ -212,13 +212,15 @@
   .colab-info { flex: 1; min-width: 0; }
   .colab-nome { font-weight: 600; }
   .colab-tel { color: var(--muted); font-size: 12px; }
+  .cargo-edit { display: flex; gap: 6px; align-items: center; }
   .cargo-input {
-    width: 160px;
+    width: 140px;
     padding: 6px 8px;
     font-size: 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
   }
+  .btn-salvar-cargo { padding: 6px 10px; font-size: 12px; }
 
   .gate {
     max-width: 380px;
@@ -819,7 +821,10 @@
               <div class="colab-tel">${escapeHtml(c.telefone) || 'sem telefone'}</div>
             </div>
             ${canEditCargo
-              ? `<input type="text" class="cargo-input" placeholder="Cargo (ex: Agente)" value="${escapeHtml(c.cargo)}" />`
+              ? `<div class="cargo-edit">
+                   <input type="text" class="cargo-input" placeholder="Cargo (ex: Agente)" value="${escapeHtml(c.cargo)}" />
+                   <button class="btn-salvar-cargo">Salvar</button>
+                 </div>`
               : `<span class="card-sub" style="margin:0">${escapeHtml(c.cargo) || 'sem cargo definido'}</span>`}
           </div>
         `).join('')}
@@ -828,23 +833,36 @@
 
     if (!canEditCargo) return;
 
-    rotasListEl.querySelectorAll('.cargo-input').forEach(input => {
-      input.addEventListener('change', async () => {
-        const row = input.closest('.colab-row');
-        const colabId = row.dataset.colabId;
+    rotasListEl.querySelectorAll('.cargo-edit').forEach(wrapper => {
+      const input = wrapper.querySelector('.cargo-input');
+      const saveBtn = wrapper.querySelector('.btn-salvar-cargo');
+      const row = wrapper.closest('.colab-row');
+      const colabId = row.dataset.colabId;
+
+      async function salvarCargo() {
         input.disabled = true;
+        saveBtn.disabled = true;
+        const textoOriginal = saveBtn.textContent;
+        saveBtn.textContent = 'Salvando...';
         try {
           await rpc('busca_imovel_set_cargo', {
             p_email: currentEmail,
             p_colaborador_id: colabId,
             p_cargo_label: input.value,
           });
+          saveBtn.textContent = 'Salvo ✓';
+          setTimeout(() => { saveBtn.textContent = textoOriginal; }, 1500);
         } catch (err) {
           alert(`Erro ao salvar cargo: ${err.message}`);
+          saveBtn.textContent = textoOriginal;
         } finally {
           input.disabled = false;
+          saveBtn.disabled = false;
         }
-      });
+      }
+
+      saveBtn.addEventListener('click', salvarCargo);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') salvarCargo(); });
     });
   }
 
