@@ -774,30 +774,53 @@
 
   const CARGO_OPTIONS = ['', 'Agente de Vistoria', 'Analista de Governança', 'Líder', 'Auxiliar de Limpeza'];
 
+  // "Rota Coqueiral" (pontômetro) vs "Rota do Coqueiral" (Mastertable) — mesma rota, nomes
+  // diferentes entre os dois sistemas. Normaliza removendo o conectivo pra conseguir cruzar.
+  function normalizeRotaNome(nome) {
+    return (nome || '').replace(/^Rota (do|da|dos|das) /i, 'Rota ').trim().toLowerCase();
+  }
+
+  async function fetchBairrosPorRota() {
+    const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+    const url = `${SUPABASE_URL}/rest/v1/busca_imovel_planilha?select=rota,bairro&status=eq.Ativo&rota=not.is.null&bairro=not.is.null&limit=3000`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return new Map();
+    const rows = await res.json();
+    const map = new Map();
+    rows.forEach(r => {
+      const chave = normalizeRotaNome(r.rota);
+      if (!map.has(chave)) map.set(chave, new Set());
+      map.get(chave).add(r.bairro);
+    });
+    return map;
+  }
+
   async function loadRotasEquipe() {
     rotasStatusEl.textContent = 'Carregando...';
     rotasListEl.innerHTML = '';
     try {
-      const [rows, editor] = await Promise.all([
+      const [rows, editor, bairrosPorRota] = await Promise.all([
         rpc('busca_imovel_rotas_equipe', {}),
         rpc('busca_imovel_check_cargo_editor', { p_email: currentEmail }),
+        fetchBairrosPorRota(),
       ]);
       rotasLoaded = true;
       canEditCargo = editor;
-      renderRotasEquipe(rows);
+      renderRotasEquipe(rows, bairrosPorRota);
     } catch (err) {
       rotasStatusEl.textContent = `Erro ao carregar: ${err.message}`;
       rotasStatusEl.className = 'status error';
     }
   }
 
-  function renderRotasEquipe(rows) {
+  function renderRotasEquipe(rows, bairrosPorRota) {
     const rotas = new Map();
     rows.forEach(r => {
       if (!rotas.has(r.rota_id)) {
+        const bairros = bairrosPorRota.get(normalizeRotaNome(r.rota_nome));
         rotas.set(r.rota_id, {
           nome: r.rota_nome,
-          regiao: r.rota_regiao,
+          regiao: bairros ? Array.from(bairros).sort((a, b) => a.localeCompare(b)).join(', ') : null,
           lider_nome: r.lider_nome,
           lider_telefone: r.lider_telefone,
           colaboradores: [],
