@@ -820,7 +820,7 @@
             </div>
             ${canEditCargo
               ? `<input type="text" class="cargo-input" placeholder="Cargo (ex: Agente)" value="${escapeHtml(c.cargo)}" />`
-              : ''}
+              : `<span class="card-sub" style="margin:0">${escapeHtml(c.cargo) || 'sem cargo definido'}</span>`}
           </div>
         `).join('')}
       </div>
